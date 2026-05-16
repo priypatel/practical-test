@@ -1,0 +1,104 @@
+networks:
+  microservices-net:
+    driver: bridge
+
+volumes:
+  mongo-data:
+  redis-data:
+
+services:
+  mongodb:
+    image: mongo:6
+    container_name: mongodb
+    restart: unless-stopped
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - microservices-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis-data:/data
+    networks:
+      - microservices-net
+
+  auth-service:
+    build: ./auth-service
+    container_name: auth-service
+    restart: unless-stopped
+    env_file: ./auth-service/.env
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/auth-db
+    depends_on:
+      - mongodb
+    networks:
+      - microservices-net
+
+  product-service:
+    build: ./product-service
+    container_name: product-service
+    restart: unless-stopped
+    env_file: ./product-service/.env
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/product-db
+    depends_on:
+      - mongodb
+    networks:
+      - microservices-net
+
+  order-service:
+    build: ./order-service
+    container_name: order-service
+    restart: unless-stopped
+    env_file: ./order-service/.env
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/order-db
+      - PRODUCT_SERVICE_URL=http://product-service:3002
+      - NOTIFICATION_SERVICE_URL=http://notification-service:3004
+    depends_on:
+      - mongodb
+      - product-service
+      - notification-service
+    networks:
+      - microservices-net
+
+  notification-service:
+    build: ./notification-service
+    container_name: notification-service
+    restart: unless-stopped
+    env_file: ./notification-service/.env
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/notification-db
+    depends_on:
+      - mongodb
+    networks:
+      - microservices-net
+
+  api-gateway:
+    build: ./api-gateway
+    container_name: api-gateway
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    env_file: ./api-gateway/.env
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - AUTH_SERVICE_URL=http://auth-service:3001
+      - PRODUCT_SERVICE_URL=http://product-service:3002
+      - ORDER_SERVICE_URL=http://order-service:3003
+      - NOTIFICATION_SERVICE_URL=http://notification-service:3004
+    depends_on:
+      - redis
+      - auth-service
+      - product-service
+      - order-service
+      - notification-service
+    networks:
+      - microservices-net
